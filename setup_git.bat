@@ -1,7 +1,4 @@
-git init
-git branch -M main
-git remote add origin https://github.com/herberelias/datalearnai.git
 git add .
-git commit -m "Migracion de login a datalearn"
+git commit -m "Agregado modulo Chatbot (Gemini + MySQL)"
 git push -u origin main
 pause

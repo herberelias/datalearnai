@@ -4,6 +4,7 @@ const morgan = require('morgan');
 require('dotenv').config();
 
 const authRoutes = require('./src/routes/auth.routes');
+const chatbotRoutes = require('./src/routes/chatbot.routes');
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use(morgan('dev'));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // Root route
 app.get('/', (req, res) => {
