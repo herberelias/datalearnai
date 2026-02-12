@@ -1,0 +1,13 @@
+1-Conexion ssh
+Connection Name: DataLearnAI Server
+Hostname: 64.23.132.230
+Port: 3306
+Username: datalearn_admin
+Password: datapass123 
+Default Schema: datalearnai
+
+2-repositorio_git
+https://github.com/herberelias/datalearnai.git
+
+3-base de datos y tabla
+"datalearnai"  y usuarios
