@@ -133,20 +133,28 @@ const consultarBD = async (req, res) => {
         }
 
         // ============================================
-        // 📝 CAPA 5: GENERACIÓN SQL CON GEMINI
+        // 📝 CAPA 5: GENERACIÓN SQL CON AUTO-CORRECCIÓN (RETRY LOOP)
         // ============================================
 
         const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
         const model = genAI.getGenerativeModel({ model: modelName });
-
         const esquemaDinamico = formatSchemaForGemini(schema);
 
-        const promptSQL = `
-# EXPERTO EN MYSQL - ANÁLISIS DE DATOS GENÉRICO
+        let attempt = 0;
+        let maxAttempts = 3;
+        let lastError = null;
+        let rows = [];
+        let jsonSQL = null;
 
+        while (attempt < maxAttempts) {
+            attempt++;
+            console.log(`🔄 Intento ${attempt}/${maxAttempts} generando SQL...`);
+
+            let promptSQL = `
+# EXPERTO EN MYSQL - ANÁLISIS DE DATOS GENÉRICO
 Eres un experto en MySQL. Convierte la pregunta del usuario en SQL válido para la base de datos descrita.
 
-## ESQUEMA DE LA BASE DE DATOS DETECTADO
+## ESQUEMA DE LA BASE DE DATOS
 ${esquemaDinamico}
 
 ## PREGUNTA DEL USUARIO
@@ -162,33 +170,48 @@ ${esquemaDinamico}
 7. NO inventes columnas. Usa solo las del esquema.
 `;
 
-        console.log('⏳ Generando SQL con Gemini...');
-        const resultSQL = await model.generateContent(promptSQL);
-        const responseText = resultSQL.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            if (lastError) {
+                promptSQL += `
+⚠️ EL INTENTO ANTERIOR FALLÓ
+Error MySQL: "${lastError}"
+Instrucción: CORRIGE el SQL anterior para solucionar este error. Verifica los nombres de columnas en el esquema y usa una alternativa válida.
+`;
+            }
 
-        let jsonSQL;
-        try {
-            jsonSQL = JSON.parse(responseText);
-        } catch (e) {
-            console.error('Error parseando JSON SQL:', responseText);
-            // Intentar recuperar si no es JSON válido pero parece SQL
-            if (responseText.toUpperCase().startsWith('SELECT')) {
-                jsonSQL = { sql: responseText };
-            } else {
-                return res.status(400).json({ success: false, error: 'No se pudo interpretar la pregunta.' });
+            try {
+                const resultSQL = await model.generateContent(promptSQL);
+                const responseText = resultSQL.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+
+                try {
+                    jsonSQL = JSON.parse(responseText);
+                } catch (e) {
+                    // Si no es JSON válido pero parece SQL, lo intentamos usar
+                    if (responseText.toUpperCase().startsWith('SELECT')) {
+                        jsonSQL = { sql: responseText };
+                    } else {
+                        throw new Error("Respuesta del modelo no es un JSON válido ni SQL directo");
+                    }
+                }
+
+                if (!jsonSQL || !jsonSQL.sql) throw new Error("No se generó SQL válido");
+
+                console.log(`⚡ Ejecutando SQL (Intento ${attempt}): ${jsonSQL.sql}`);
+                [rows] = await pool.execute(jsonSQL.sql);
+
+                // Si llegamos aquí, la ejecución fue exitosa
+                break;
+
+            } catch (err) {
+                console.warn(`❌ Fallo intento ${attempt}: ${err.message}`);
+                lastError = err.message;
+
+                // Si es el último intento, lanzamos el error para que vaya al catch general
+                if (attempt === maxAttempts) {
+                    throw new Error(`No se pudo generar una consulta válida después de ${maxAttempts} intentos. Último error: ${lastError}`);
+                }
+                // Si no es el último, el loop continúa y re-intenta con el error en el prompt
             }
         }
-
-        if (!jsonSQL.sql) {
-            return res.status(400).json({ success: false, error: 'No se pudo generar una consulta válida.' });
-        }
-
-        // ============================================
-        // ⚡ CAPA 6: EJECUCIÓN SQL
-        // ============================================
-
-        console.log(`⚡ Ejecutando SQL: ${jsonSQL.sql}`);
-        const [rows] = await pool.execute(jsonSQL.sql);
 
         // ============================================
         // 🗣️ CAPA 7: EXPLICACIÓN DE RESULTADOS
@@ -230,11 +253,12 @@ ${JSON.stringify(metricas, null, 2)}
             explicacion: respuestaFinal,
             resultados: rows,
             metricas: metricas,
-            sql_ejecutado: jsonSQL.sql,
-            db_version: 'MySQL Generic'
+            sql_ejecutado: jsonSQL?.sql,
+            db_version: 'MySQL Generic',
+            retries: attempt
         };
 
-        // Guardar en caché
+        // Guardar en caché sólo si hubo éxito
         if (rows.length > 0) {
             queryCache.set(empresaId, pregunta, resultadoFinal);
         }
@@ -247,7 +271,8 @@ ${JSON.stringify(metricas, null, 2)}
         console.error('❌ Error general:', error);
         res.status(500).json({
             success: false,
-            error: 'Ocurrió un error procesando tu consulta.'
+            // Mensaje genérico para el usuario
+            error: 'Ocurrió un error procesando tu consulta. Por favor intenta reformular tu pregunta.'
         });
     } finally {
         console.timeEnd('ChatbotExecution');
