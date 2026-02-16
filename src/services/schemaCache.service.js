@@ -9,7 +9,10 @@ class SchemaCacheService {
         const cached = await this.getCached(empresaId);
         if (cached && !this.isExpired(cached)) {
             console.log(`✅ Schema de ${empresaId} desde caché`);
-            return JSON.parse(cached.schema_data);
+            // MySQL driver (mysql2) automatically parses JSON columns
+            return typeof cached.schema_data === 'string'
+                ? JSON.parse(cached.schema_data)
+                : cached.schema_data;
         }
 
         console.log(`🔍 Descubriendo schema de ${empresaId}...`);
