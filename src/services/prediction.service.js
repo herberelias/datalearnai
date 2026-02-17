@@ -60,9 +60,16 @@ class PredictionService {
     }
 
     async getHistoricalData(empresaId, schema, producto = null) {
-        const mainTable = schema.main_table;
-        const ventaCol = schema.business_terms.venta || schema.tables.find(t => t.name === mainTable).metrics[0]?.name;
-        const fechaCol = schema.business_terms.fecha || schema.tables.find(t => t.name === mainTable).dates[0]?.name;
+        const mainTableName = schema.main_table;
+        const mainTableDef = schema.tables.find(t => t.name === mainTableName);
+
+        // Determinar qué usar en el FROM: nombre de tabla o subquery virtual
+        const tableSource = (mainTableDef && mainTableDef.is_virtual)
+            ? `(${mainTableDef.virtual_sql}) AS \`${mainTableName}\``
+            : `\`${mainTableName}\``;
+
+        const ventaCol = schema.business_terms.venta || mainTableDef.metrics[0]?.name;
+        const fechaCol = schema.business_terms.fecha || mainTableDef.dates[0]?.name;
 
         if (!ventaCol || !fechaCol) {
             throw new Error('No se encontraron columnas de venta o fecha');
@@ -72,7 +79,7 @@ class PredictionService {
       SELECT 
         DATE_FORMAT(\`${fechaCol}\`, '%Y-%m') as periodo,
         SUM(\`${ventaCol}\`) as value
-      FROM \`${mainTable}\`
+      FROM ${tableSource}
       WHERE \`${fechaCol}\` >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
     `;
 

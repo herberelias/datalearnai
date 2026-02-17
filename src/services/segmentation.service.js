@@ -7,9 +7,16 @@ class SegmentationService {
 
     async segmentRFM(empresaId, schema) {
         try {
-            const mainTable = schema.main_table;
-            const ventaCol = schema.business_terms.venta || schema.tables.find(t => t.name === mainTable).metrics[0]?.name;
-            const fechaCol = schema.business_terms.fecha || schema.tables.find(t => t.name === mainTable).dates[0]?.name;
+            const mainTableName = schema.main_table;
+            const mainTableDef = schema.tables.find(t => t.name === mainTableName);
+
+            // Determinar qué usar en el FROM: nombre de tabla o subquery virtual
+            const tableSource = (mainTableDef && mainTableDef.is_virtual)
+                ? `(${mainTableDef.virtual_sql}) AS \`${mainTableName}\``
+                : `\`${mainTableName}\``;
+
+            const ventaCol = schema.business_terms.venta || mainTableDef.metrics[0]?.name;
+            const fechaCol = schema.business_terms.fecha || mainTableDef.dates[0]?.name;
             const clienteCol = schema.business_terms.cliente;
 
             if (!ventaCol || !fechaCol || !clienteCol) {
@@ -22,7 +29,7 @@ class SegmentationService {
           DATEDIFF(CURDATE(), MAX(\`${fechaCol}\`)) as recency,
           COUNT(DISTINCT \`${fechaCol}\`) as frequency,
           SUM(\`${ventaCol}\`) as monetary
-        FROM \`${mainTable}\`
+        FROM ${tableSource}
         WHERE \`${fechaCol}\` >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
         GROUP BY \`${clienteCol}\`
         HAVING monetary > 0
