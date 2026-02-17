@@ -195,6 +195,18 @@ Instrucción: CORRIGE el SQL anterior para solucionar este error. Verifica los n
 
                 if (!jsonSQL || !jsonSQL.sql) throw new Error("No se generó SQL válido");
 
+                // === LÓGICA DE TABLA VIRTUAL ===
+                // Si la consulta usa la tabla virtual, reemplazamos con su definición SQL real
+                const mainTableDefinition = schema.tables.find(t => t.name === schema.main_table);
+                if (mainTableDefinition && mainTableDefinition.is_virtual && mainTableDefinition.virtual_sql) {
+                    console.log(`🔄 Reemplazando tabla virtual '${mainTableDefinition.name}' con subquery...`);
+                    // Reemplazo simple del nombre de la tabla con (SELECT ... UNION ...) AS nombre
+                    // Usamos una regex que busque el nombre de la tabla (con o sin backticks)
+                    const tableNameRegex = new RegExp(`\`?${mainTableDefinition.name}\`?`, 'g');
+                    jsonSQL.sql = jsonSQL.sql.replace(tableNameRegex, `(${mainTableDefinition.virtual_sql}) AS \`${mainTableDefinition.name}\``);
+                }
+                // ===============================
+
                 console.log(`⚡ Ejecutando SQL (Intento ${attempt}): ${jsonSQL.sql}`);
                 [rows] = await pool.execute(jsonSQL.sql);
 
