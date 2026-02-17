@@ -19,7 +19,14 @@ class SchemaDiscoveryService {
         ORDER BY TABLE_ROWS DESC
       `, [dbConfig.database]);
 
+      const yearTables = [];
+
       for (const table of tables) {
+        // Detectar si es una tabla de año (ej: "2023", "2024")
+        if (/^20[2-9][0-9]$/.test(table.name)) {
+          yearTables.push(table.name);
+        }
+
         const [columns] = await connection.execute(`
           SELECT COLUMN_NAME as name, DATA_TYPE as type, COLUMN_TYPE as full_type,
                  IS_NULLABLE as nullable, COLUMN_KEY as key_type
@@ -48,7 +55,24 @@ class SchemaDiscoveryService {
         });
       }
 
-      schema.main_table = tables[0]?.name || null;
+      // LÓGICA ESPECIAL: Si hay tablas de años, crear una "vista virtual" para Gemini
+      if (yearTables.length > 1) {
+        const mainYearTable = schema.tables.find(t => t.name === yearTables[0]);
+        if (mainYearTable) {
+          const unionTable = {
+            ...mainYearTable,
+            name: 'ventas_union_anuales',
+            description: `Vista virtual que une las tablas de los años: ${yearTables.join(', ')}`,
+            is_virtual: true,
+            virtual_sql: yearTables.map(t => `SELECT * FROM \`${t}\``).join(' UNION ALL ')
+          };
+          schema.tables.unshift(unionTable); // Ponerla al principio
+          schema.main_table = unionTable.name;
+        }
+      } else {
+        schema.main_table = tables[0]?.name || null;
+      }
+
       schema.business_terms = this.extractBusinessTerms(schema);
       return schema;
     } finally {
@@ -62,9 +86,9 @@ class SchemaDiscoveryService {
 
     if (name.includes('id') || name.includes('codigo') || name.includes('code') || column.key_type === 'PRI') return 'identifier';
     if (name.includes('fecha') || name.includes('date') || name.includes('año') || name.includes('mes') || name.includes('year') || name.includes('month') || type.includes('date') || type.includes('timestamp')) return 'date';
-    if ((name.includes('venta') || name.includes('sale') || name.includes('precio') || name.includes('price') || name.includes('monto') || name.includes('amount') || name.includes('total') || name.includes('costo') || name.includes('cost') || name.includes('$')) && (type.includes('decimal') || type.includes('float') || type.includes('double'))) return 'metric_monetary';
+    if ((name.includes('venta') || name.includes('sale') || name.includes('precio') || name.includes('price') || name.includes('monto') || name.includes('amount') || name.includes('total') || name.includes('costo') || name.includes('cost') || name.includes('net') || name.includes('$')) && (type.includes('decimal') || type.includes('float') || type.includes('double'))) return 'metric_monetary';
     if ((name.includes('cantidad') || name.includes('quantity') || name.includes('qty') || name.includes('unidades') || name.includes('units') || name.includes('cajas') || name.includes('boxes')) && (type.includes('int') || type.includes('decimal'))) return 'metric_quantity';
-    if (name.includes('nombre') || name.includes('name') || name.includes('tipo') || name.includes('type') || name.includes('categoria') || name.includes('category') || name.includes('marca') || name.includes('brand') || name.includes('estado') || name.includes('status')) return 'category';
+    if (name.includes('nombre') || name.includes('name') || name.includes('tipo') || name.includes('type') || name.includes('categoria') || name.includes('category') || name.includes('marca') || name.includes('brand') || name.includes('estado') || name.includes('status') || name.includes('producto') || name.includes('cliente')) return 'category';
     if (name.includes('latitud') || name.includes('latitude') || name.includes('longitud') || name.includes('longitude')) return 'coordinate';
     if (type === 'varchar' || type === 'text') return 'label';
 
@@ -84,11 +108,35 @@ class SchemaDiscoveryService {
     if (!mainTable) return {};
 
     const terms = {};
-    const ventaCol = mainTable.metrics.find(c => (c.name.toLowerCase().includes('venta') || c.name.toLowerCase().includes('sale')) && c.role === 'metric_monetary');
-    if (ventaCol) terms.venta = ventaCol.name;
 
-    const productoCol = mainTable.categories.find(c => c.name.toLowerCase().includes('producto') || c.name.toLowerCase().includes('product'));
-    if (productoCol) terms.producto = productoCol.name;
+    // 1. Mejorar detección de VENTAS (Priorizar Venta Neta)
+    const ventasCols = mainTable.metrics.filter(c =>
+      (c.name.toLowerCase().includes('venta') || c.name.toLowerCase().includes('sale')) &&
+      c.role === 'metric_monetary'
+    );
+
+    // Buscar "neto" explícitamente primero
+    const ventaNeta = ventasCols.find(c => c.name.toLowerCase().includes('net'));
+    if (ventaNeta) {
+      terms.venta = ventaNeta.name;
+    } else if (ventasCols.length > 0) {
+      // Si no hay neto, usar el primero que encontró como fallback
+      terms.venta = ventasCols[0].name;
+    }
+
+    // 2. Mejorar detección de PRODUCTO (Evitar IDs)
+    const productoCols = mainTable.categories.filter(c =>
+      (c.name.toLowerCase().includes('producto') || c.name.toLowerCase().includes('product')) &&
+      !c.name.toLowerCase().includes('id') &&
+      !c.name.toLowerCase().includes('cod')
+    );
+
+    const nombreProducto = productoCols.find(c => c.name.toLowerCase().includes('nombre') || c.name.toLowerCase().includes('name'));
+    if (nombreProducto) {
+      terms.producto = nombreProducto.name;
+    } else if (productoCols.length > 0) {
+      terms.producto = productoCols[0].name;
+    }
 
     const clienteCol = mainTable.categories.find(c => c.name.toLowerCase().includes('cliente') || c.name.toLowerCase().includes('customer') || c.name.toLowerCase().includes('client'));
     if (clienteCol) terms.cliente = clienteCol.name;
