@@ -15,7 +15,7 @@ app.use(morgan('dev'));
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/chatbotmysql', chatbotRoutes);
 
 // Root route
 app.get('/', (req, res) => {
