@@ -4,7 +4,7 @@ import 'dio_client.dart';
 
 class AuthService {
   final Dio _dio = DioClient.createDio(
-    baseUrl: 'http://64.23.132.230:4000/api',
+    baseUrl: 'http://64.23.132.230:3000/api',
     connectTimeout: const Duration(seconds: 15),
     receiveTimeout: const Duration(seconds: 15),
     maxRetries: 3,

@@ -4,7 +4,7 @@ import 'dio_client.dart';
 
 class ChatService {
   final Dio _dio = DioClient.createDio(
-    baseUrl: 'http://64.23.132.230:4000/api',
+    baseUrl: 'http://64.23.132.230:3000/api',
     connectTimeout: const Duration(seconds: 20),
     receiveTimeout: const Duration(seconds: 200),
     maxRetries: 3, // Reintentar hasta 3 veces si falla la conexión
@@ -20,7 +20,7 @@ class ChatService {
       final token = await _storage.read(key: 'jwt_token');
 
       final response = await _dio.post(
-        '/chatbot/consulta', // Endpoint actualizado para datalearn
+        '/chatbotmysql/consulta', // Endpoint actualizado para datalearn
         data: {'pregunta': message, 'history': history ?? []},
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
@@ -65,7 +65,7 @@ class ChatService {
     try {
       final token = await _storage.read(key: 'jwt_token');
       final response = await _dio.get(
-        '/chatbot/history', // Endpoint actualizado
+        '/chatbotmysql/history', // Endpoint actualizado
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 

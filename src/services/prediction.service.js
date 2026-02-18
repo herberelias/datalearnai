@@ -55,11 +55,14 @@ class PredictionService {
 
         } catch (error) {
             console.error('Error en predicción:', error);
+            // Loguear detalles adicionales si es disponible
+            if (error.sql) console.error('SQL fallido:', error.sql);
             return { success: false, error: error.message };
         }
     }
 
     async getHistoricalData(empresaId, schema, producto = null) {
+        console.log(`📊 getHistoricalData - Inicio. Empresa: ${empresaId}, Producto: ${producto}`);
         const mainTableName = schema.main_table;
         const mainTableDef = schema.tables.find(t => t.name === mainTableName);
 
@@ -71,6 +74,9 @@ class PredictionService {
         const ventaCol = schema.business_terms.venta || mainTableDef.metrics[0]?.name;
         const fechaCol = schema.business_terms.fecha || mainTableDef.dates[0]?.name;
 
+        console.log(`📊 Columnas identificadas - Venta: ${ventaCol}, Fecha: ${fechaCol}`);
+        console.log(`📊 Tabla principal: ${mainTableName} (Virtual: ${!!mainTableDef?.is_virtual})`);
+
         if (!ventaCol || !fechaCol) {
             throw new Error('No se encontraron columnas de venta o fecha');
         }
@@ -80,8 +86,9 @@ class PredictionService {
         DATE_FORMAT(\`${fechaCol}\`, '%Y-%m') as periodo,
         SUM(\`${ventaCol}\`) as value
       FROM ${tableSource}
-      WHERE \`${fechaCol}\` >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+      WHERE \`${fechaCol}\` >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
     `;
+        // AUMENTADO INTERVALO A 24 MESES PARA ASEGURAR DATOS
 
         if (producto && schema.business_terms.producto) {
             sql += ` AND \`${schema.business_terms.producto}\` LIKE '%${producto}%'`;
@@ -89,7 +96,12 @@ class PredictionService {
 
         sql += ` GROUP BY periodo ORDER BY periodo ASC`;
 
+        console.log(`📊 Ejecutando SQL de predicción:\n${sql}`);
+
         const [rows] = await this.pool.execute(sql);
+        console.log(`📊 Filas encontradas: ${rows.length}`);
+        console.log(`📊 Detalles filas:`, JSON.stringify(rows));
+
         return rows;
     }
 
