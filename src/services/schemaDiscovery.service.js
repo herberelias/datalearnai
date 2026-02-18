@@ -144,8 +144,19 @@ class SchemaDiscoveryService {
     const marcaCol = mainTable.categories.find(c => c.name.toLowerCase().includes('marca') || c.name.toLowerCase().includes('brand'));
     if (marcaCol) terms.marca = marcaCol.name;
 
-    const fechaCol = mainTable.dates[0];
-    if (fechaCol) terms.fecha = fechaCol.name;
+    // 3. Mejorar detección de FECJA (Priorizar Fecha completa sobre Año/Mes)
+    const dateMock = mainTable.dates.find(c =>
+      (c.name.toLowerCase().includes('fecha') || c.name.toLowerCase().includes('date')) &&
+      !c.name.toLowerCase().includes('año') &&
+      !c.name.toLowerCase().includes('year')
+    );
+
+    if (dateMock) {
+      terms.fecha = dateMock.name;
+    } else if (mainTable.dates.length > 0) {
+      // Fallback: usar el primero que encuentre
+      terms.fecha = mainTable.dates[0].name;
+    }
 
     return terms;
   }
