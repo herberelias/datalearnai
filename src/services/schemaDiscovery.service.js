@@ -55,8 +55,14 @@ class SchemaDiscoveryService {
         });
       }
 
-      // LÓGICA ESPECIAL: Si hay tablas de años, crear una "vista virtual" para Gemini
-      if (yearTables.length > 1) {
+      // LÓGICA ESPECIAL: Priorizar tabla consolidada "producto" si existe
+      const productoTable = tables.find(t => t.name.toLowerCase() === 'producto');
+
+      if (productoTable) {
+        schema.main_table = productoTable.name;
+        console.log('✅ Tabla consolidada "producto" encontrada. Usándola como principal.');
+      } else if (yearTables.length > 1) {
+        // Si NO hay tabla consolidada, y hay tablas de años, crear "vista virtual"
         const mainYearTable = schema.tables.find(t => t.name === yearTables[0]);
         if (mainYearTable) {
           const unionTable = {
