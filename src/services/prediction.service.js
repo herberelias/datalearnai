@@ -66,13 +66,38 @@ class PredictionService {
         const mainTableName = schema.main_table;
         const mainTableDef = schema.tables.find(t => t.name === mainTableName);
 
-        // Determinar qué usar en el FROM: nombre de tabla o subquery virtual
-        const tableSource = (mainTableDef && mainTableDef.is_virtual)
-            ? `(${mainTableDef.virtual_sql}) AS \`${mainTableName}\``
-            : `\`${mainTableName}\``;
+        // Optimización: Reconstruir la query UNION para seleccionar SOLO las columnas necesarias
+        // Evita "Error Code: 1114. The table is full" por usar SELECT * en tablas grandes
+        let tableSource;
 
         const ventaCol = schema.business_terms.venta || mainTableDef.metrics[0]?.name;
         const fechaCol = schema.business_terms.fecha || mainTableDef.dates[0]?.name;
+        const productCol = schema.business_terms.producto;
+
+        if (mainTableDef && mainTableDef.is_virtual) {
+            // Identificar tablas de años numéricos (2022, 2023...)
+            const yearTables = schema.tables
+                .filter(t => /^20[2-9][0-9]$/.test(t.name))
+                .map(t => t.name);
+
+            if (yearTables.length > 0) {
+                const colsToSelect = [`\`${fechaCol}\``, `\`${ventaCol}\``];
+                if (producto && productCol) {
+                    colsToSelect.push(`\`${productCol}\``);
+                }
+
+                const unionQuery = yearTables.map(tbl =>
+                    `SELECT ${colsToSelect.join(', ')} FROM \`${tbl}\``
+                ).join(' UNION ALL ');
+
+                tableSource = `(${unionQuery}) AS \`${mainTableName}\``;
+                console.log('⚡ Query optimizada: Usando UNION selectiva en lugar de SELECT *');
+            } else {
+                tableSource = `(${mainTableDef.virtual_sql}) AS \`${mainTableName}\``;
+            }
+        } else {
+            tableSource = `\`${mainTableName}\``;
+        }
 
         console.log(`📊 Columnas identificadas - Venta: ${ventaCol}, Fecha: ${fechaCol}`);
         console.log(`📊 Tabla principal: ${mainTableName} (Virtual: ${!!mainTableDef?.is_virtual})`);
