@@ -32,8 +32,14 @@ class MeiliService {
       );
       final hits = response.data['hits'] as List<dynamic>? ?? [];
       return hits
-          .map((hit) => hit['nombre']?.toString() ?? '')
-          .where((nombre) => nombre.isNotEmpty)
+          .map((hit) {
+            final nombre = hit['nombre']?.toString() ?? '';
+            final codigo = hit['codigo_producto']?.toString() ?? '';
+            return (codigo.isNotEmpty && nombre.isNotEmpty)
+                ? '$codigo - $nombre'
+                : nombre;
+          })
+          .where((s) => s.isNotEmpty)
           .toList();
     } catch (_) {
       // Si Meilisearch no responde, retornar lista vacía
@@ -50,8 +56,14 @@ class MeiliService {
       );
       final hits = response.data['hits'] as List<dynamic>? ?? [];
       return hits
-          .map((hit) => hit['nombre']?.toString() ?? '')
-          .where((nombre) => nombre.isNotEmpty)
+          .map((hit) {
+            final nombre = hit['nombre']?.toString() ?? '';
+            final codigo = hit['codigo_cliente']?.toString() ?? '';
+            return (codigo.isNotEmpty && nombre.isNotEmpty)
+                ? '$codigo - $nombre'
+                : nombre;
+          })
+          .where((s) => s.isNotEmpty)
           .toList();
     } catch (_) {
       // Si Meilisearch no responde, retornar lista vacía
