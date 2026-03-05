@@ -73,25 +73,22 @@ const consultarBD = async (req, res) => {
             const resultado = await predictionService.predictSales(empresaId, schema, params);
 
             if (!resultado.success) {
-                return res.status(200).json({
+                console.log(`⚠️ Fallo en predicción ML algorítmica (${resultado.error}). Haciendo fallback a Gemini SQL (Tendencias).`);
+                // En lugar de rendirnos, dejamos que pase al análisis SQL (Capa 5) para que Gemini deduzca tendencias
+            } else {
+                const explicacion = `Según el análisis predictivo de los últimos ${resultado.datos_historicos} periodos, se estima que ${params.producto ? `para ${params.producto}` : 'en total'} venderás aproximadamente $${resultado.prediccion.toLocaleString()} en los próximos ${params.meses} mes(es). El rango de confianza está entre $${resultado.intervalo_confianza.min.toLocaleString()} y $${resultado.intervalo_confianza.max.toLocaleString()} (confianza del modelo: ${(resultado.confianza * 100).toFixed(1)}%).`;
+
+                const responseML = {
                     success: true,
-                    explicacion: `No pude generar una predicción: ${resultado.error}. ¿Te gustaría ver datos históricos en su lugar?`,
-                    tipo: 'ml_error'
-                });
+                    explicacion: explicacion,
+                    resultados: [resultado],
+                    tipo: 'prediction',
+                    modelo: resultado.modelo
+                };
+
+                await guardarHistorial(req.user.id, pregunta, explicacion);
+                return res.status(200).json(responseML);
             }
-
-            const explicacion = `Según el análisis predictivo de los últimos ${resultado.datos_historicos} periodos, se estima que ${params.producto ? `para ${params.producto}` : 'en total'} venderás aproximadamente $${resultado.prediccion.toLocaleString()} en los próximos ${params.meses} mes(es). El rango de confianza está entre $${resultado.intervalo_confianza.min.toLocaleString()} y $${resultado.intervalo_confianza.max.toLocaleString()} (confianza del modelo: ${(resultado.confianza * 100).toFixed(1)}%).`;
-
-            const responseML = {
-                success: true,
-                explicacion: explicacion,
-                resultados: [resultado],
-                tipo: 'prediction',
-                modelo: resultado.modelo
-            };
-
-            await guardarHistorial(req.user.id, pregunta, explicacion);
-            return res.status(200).json(responseML);
         }
 
         if (intention === 'segmentation') {
@@ -174,7 +171,8 @@ ${esquemaDinamico}
 1. Usando el contexto de memoria, deduce qué filtros (fechas, nombres) faltan en la pregunta actual.
 2. Genera SOLO el SQL, sin explicaciones, ni markdown. Devuelve un JSON: { "sql": "..." }
 3. Usa nombres EXACTOS de columnas (con backticks si tienen espacios)
-3. Para sumas de dinero usa: ${schema.business_terms.venta ? '`' + schema.business_terms.venta + '`' : 'la columna métrica monetaria más probable'}
+4. ⚠️ OBLIGATORIO: ¡NUNCA devuelvas funciones en los nombres de columnas (ej: COUNT(id), SUM(...))! Usa SIEMPRE alias cortos y legibles: ej: SUM(...) AS \`Total Ventas\`, COUNT(...) AS \`Total Clientes\`.
+5. Para sumas de dinero usa: ${schema.business_terms.venta ? '`' + schema.business_terms.venta + '`' : 'la columna métrica monetaria más probable'}
 4. Para fechas usa: ${schema.business_terms.fecha ? '`' + schema.business_terms.fecha + '`' : 'la columna de fecha más probable'}
 5. Si preguntan por totales/sumas: usa SUM() y GROUP BY apropiados
 6. Si preguntan por listados/detalles: usa LIMIT 100
