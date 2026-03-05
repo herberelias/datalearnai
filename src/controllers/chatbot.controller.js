@@ -136,6 +136,10 @@ const consultarBD = async (req, res) => {
         // 📝 CAPA 5: GENERACIÓN SQL CON AUTO-CORRECCIÓN (RETRY LOOP)
         // ============================================
 
+        const historialTexto = history && history.length > 0
+            ? history.slice(-5).map(h => `Usuario: ${h.pregunta}\nSistema: ${h.respuesta.substring(0, 100)}...`).join('\n---\n')
+            : "";
+
         const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
         const model = genAI.getGenerativeModel({ model: modelName });
         const esquemaDinamico = formatSchemaForGemini(schema);
@@ -154,15 +158,22 @@ const consultarBD = async (req, res) => {
 # EXPERTO EN MYSQL - ANÁLISIS DE DATOS GENÉRICO
 Eres un experto en MySQL. Convierte la pregunta del usuario en SQL válido para la base de datos descrita.
 
+## MEMORIA DE LA CONVERSACIÓN (CONTEXTO MENTAL)
+Para preguntas incompletas o de seguimiento (ej: "y el mes anterior?", "de esa misma marca"), usa este historial para aplicar los filtros correctos a la consulta nueva:
+---
+${historialTexto ? historialTexto : "(Primera pregunta de la conversación)"}
+---
+
 ## ESQUEMA DE LA BASE DE DATOS
 ${esquemaDinamico}
 
-## PREGUNTA DEL USUARIO
+## PREGUNTA DEL USUARIO ACTUAL
 "${pregunta}"
 
 ## INSTRUCCIONES CRÍTICAS
-1. Genera SOLO el SQL, sin explicaciones, ni markdown. Devuelve un JSON: { "sql": "..." }
-2. Usa nombres EXACTOS de columnas (con backticks si tienen espacios)
+1. Usando el contexto de memoria, deduce qué filtros (fechas, nombres) faltan en la pregunta actual.
+2. Genera SOLO el SQL, sin explicaciones, ni markdown. Devuelve un JSON: { "sql": "..." }
+3. Usa nombres EXACTOS de columnas (con backticks si tienen espacios)
 3. Para sumas de dinero usa: ${schema.business_terms.venta ? '`' + schema.business_terms.venta + '`' : 'la columna métrica monetaria más probable'}
 4. Para fechas usa: ${schema.business_terms.fecha ? '`' + schema.business_terms.fecha + '`' : 'la columna de fecha más probable'}
 5. Si preguntan por totales/sumas: usa SUM() y GROUP BY apropiados
@@ -236,22 +247,28 @@ Instrucción: CORRIGE el SQL anterior para solucionar este error. Verifica los n
             metricas = calcularMetricas(rows);
 
             const promptAnalisis = `
-# ANALISTA DE NEGOCIOS
-Analiza estos datos y responde la pregunta del usuario.
+# ANALISTA DE NEGOCIOS Y ESTRATEGA PROACTIVO
+Analiza estos datos recordando el contexto de la conversación, identifica tendencias ocultas y proyecta oportunidades asumiendo que el usuario busca maximizar ventas e identificar problemas.
 
-## PREGUNTA
+## CONTEXTO HISTÓRICO DE LA CONVERSACIÓN
+${historialTexto ? historialTexto : "(Primera pregunta de la conversación)"}
+
+## PREGUNTA ACTUAL
 "${pregunta}"
 
-## DATOS (Muestra)
+## DATOS EXTRAÍDOS DE LA BASE (Muestra)
 ${JSON.stringify(rows.slice(0, 10), null, 2)}
 
-## MÉTRICAS
+## MÉTRICAS PRECALCULADAS
 ${JSON.stringify(metricas, null, 2)}
 
-## INSTRUCCIONES
-- Responde de forma natural, amigable y profesional.
-- Menciona los datos clave (totales, promedios, tops).
-- No uses jerga técnica (SQL, query).
+## REGLAS CRÍTICAS PARA TU RESPUESTA:
+1. RESPONDE CON NATURALIDAD, NUNCA menciones "según los datos", "la muestra", SQL o tablas.
+2. Si te piden una "proyección", "tendencia", o ves diferencias notables, asume el rol de estratega:
+   - Diles cuánto creció o bajó.
+   - Brinda 1-2 recomendaciones CLAVE ("Podríamos lanzar una promoción", "Parece una buena oportunidad para...").
+3. Si la pregunta nueva depende de la respuesta pasada, conéctalas con fluidez.
+4. Concluye siempre con una pregunta que invite a seguir explorando (Ej: "¿Te desgloso esto por producto principal?").
 - Sé conciso.
 `;
             const resultAnalisis = await model.generateContent(promptAnalisis);
