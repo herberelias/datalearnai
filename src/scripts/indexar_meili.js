@@ -35,7 +35,9 @@ async function indexarProductos() {
       SELECT DISTINCT 
         \`Nombre Producto\` AS nombre,
         \`Nombre Marca\`    AS marca,
-        \`Nombre Categoria Comercial\` AS categoria
+        \`Nombre Categoria Comercial\` AS categoria,
+        \`Nombre Padre\` AS padre,
+        \`Estado del Producto\` AS estado
       FROM producto
       WHERE \`Nombre Producto\` IS NOT NULL AND \`Nombre Producto\` != ''
       ORDER BY \`Nombre Producto\`
@@ -45,7 +47,9 @@ async function indexarProductos() {
             id: i + 1,
             nombre: row.nombre,
             marca: row.marca || '',
-            categoria: row.categoria || ''
+            categoria: row.categoria || '',
+            padre: row.padre || '',
+            estado: row.estado || ''
         }));
 
         console.log(`   → ${docs.length} productos encontrados`);
@@ -71,7 +75,11 @@ async function indexarClientes() {
       SELECT DISTINCT 
         \`Nombre de Cliente Comercial\` AS nombre,
         \`Tipo de Negocio\`             AS tipo,
-        \`Nombre Canal Distribucion\`   AS canal
+        \`Nombre Canal Distribucion\`   AS canal,
+        \`Departamento\`                AS departamento,
+        \`Municipio\`                   AS municipio,
+        \`Encargado o Vendedor\`        AS vendedor,
+        \`Gerente o Superior\`          AS gerente
       FROM producto
       WHERE \`Nombre de Cliente Comercial\` IS NOT NULL 
         AND \`Nombre de Cliente Comercial\` != ''
@@ -82,7 +90,11 @@ async function indexarClientes() {
             id: i + 1,
             nombre: row.nombre,
             tipo: row.tipo || '',
-            canal: row.canal || ''
+            canal: row.canal || '',
+            departamento: row.departamento || '',
+            municipio: row.municipio || '',
+            vendedor: row.vendedor || '',
+            gerente: row.gerente || ''
         }));
 
         console.log(`   → ${docs.length} clientes encontrados`);
@@ -104,17 +116,17 @@ async function indexarClientes() {
 async function configurarBusqueda() {
     console.log('\n⚙️  Configurando atributos de búsqueda...');
     try {
-        // Campos buscables en productos
+        // Campos buscables en productos expandido
         await axios.put(
             `${MEILI_URL}/indexes/productos/settings/searchable-attributes`,
-            ['nombre', 'marca', 'categoria'],
+            ['nombre', 'marca', 'categoria', 'padre', 'estado'],
             { headers }
         );
 
-        // Campos buscables en clientes
+        // Campos buscables en clientes, regiones y vendedores expandido
         await axios.put(
             `${MEILI_URL}/indexes/clientes/settings/searchable-attributes`,
-            ['nombre', 'tipo', 'canal'],
+            ['nombre', 'tipo', 'canal', 'departamento', 'municipio', 'vendedor', 'gerente'],
             { headers }
         );
 
