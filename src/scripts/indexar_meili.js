@@ -76,10 +76,10 @@ async function indexarClientes() {
         \`Nombre de Cliente Comercial\` AS nombre,
         \`Tipo de Negocio\`             AS tipo,
         \`Nombre Canal Distribucion\`   AS canal,
-        \`Departamento\`                AS departamento,
-        \`Municipio\`                   AS municipio,
-        \`Encargado o Vendedor\`        AS vendedor,
-        \`Gerente o Superior\`          AS gerente
+        \`Nombre Departamento\`           AS departamento,
+        \`nombre Municipio\`              AS municipio,
+        \`Nombre Vendedor Asignado\`      AS vendedor,
+        \`NombreDominioSupervisor\`       AS gerente
       FROM producto
       WHERE \`Nombre de Cliente Comercial\` IS NOT NULL 
         AND \`Nombre de Cliente Comercial\` != ''
