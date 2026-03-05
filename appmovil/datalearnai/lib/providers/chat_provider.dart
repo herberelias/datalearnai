@@ -189,30 +189,38 @@ class ChatProvider extends ChangeNotifier {
 
       if (result['success']) {
         String reply = '';
-        if (result['results'] != null &&
-            (result['results'] as List).isNotEmpty) {
-          reply =
-              "🔍 He encontrado ${result['results'].length} resultados:\n\n";
+
+        // Convertir results a List de forma segura sin importar el formato del backend
+        List? resultsList;
+        final rawResults = result['results'];
+        if (rawResults is List) {
+          resultsList = rawResults;
+        } else if (rawResults is Map) {
+          resultsList = rawResults.values.toList();
+        }
+
+        if (resultsList != null && resultsList.isNotEmpty) {
+          reply = "🔍 He encontrado ${resultsList.length} resultados:\n\n";
           reply += "💡 ${result['explanation']}\n";
         } else {
           reply =
               "✅ Consulta ejecutada correctamente, pero no hay resultados.\n\n";
-          reply += "💡 ${result['explanation']}";
+          reply += "💡 ${result['explanation'] ?? ''}";
         }
 
         // Speak explanation
-        speak(result['explanation']);
+        speak(result['explanation'] ?? '');
 
         _messages.add(
           Message(
             text: reply,
             isUser: false,
             sql: result['sql'],
-            data: result['results'],
+            data: resultsList,
           ),
         );
       } else {
-        String errorMsg = "❌ Error: ${result['message']}";
+        final errorMsg = "❌ Error: ${result['message']}";
         speak("Lo siento, hubo un error: ${result['message']}");
         _messages.add(Message(text: errorMsg, isUser: false));
       }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dio_client.dart';
@@ -26,12 +27,31 @@ class ChatService {
       );
 
       if (response.statusCode == 200) {
+        // Si Dio no parseó el JSON (Content-Type incorrecto), parsear manualmente
+        dynamic data = response.data;
+        if (data is String) {
+          try {
+            data = jsonDecode(data);
+          } catch (_) {
+            return {
+              'success': false,
+              'message': 'Error al procesar la respuesta del servidor',
+            };
+          }
+        }
+
+        if (data is! Map) {
+          return {
+            'success': false,
+            'message': 'Formato de respuesta inesperado',
+          };
+        }
+
         return {
           'success': true,
-          'sql': response
-              .data['sql_ejecutado'], // Actualizado según respuesta backend
-          'explanation': response.data['explicacion'],
-          'results': response.data['resultados'],
+          'sql': data['sql_ejecutado'],
+          'explanation': data['explicacion'],
+          'results': data['resultados'],
         };
       }
       return {
@@ -40,12 +60,19 @@ class ChatService {
       };
     } on DioException catch (e) {
       if (e.response != null) {
-        return {
-          'success': false,
-          'message': e.response?.data['error'] ?? 'Error de servidor',
-        };
+        // Parsear error del servidor de forma segura
+        dynamic errData = e.response?.data;
+        if (errData is String) {
+          try {
+            errData = jsonDecode(errData);
+          } catch (_) {}
+        }
+        final msg =
+            (errData is Map ? errData['error'] : null) ??
+            errData?.toString() ??
+            'Error de servidor';
+        return {'success': false, 'message': msg};
       }
-      // Mensajes más claros sobre problemas de conexión
       String errorMsg = 'Error de conexión';
       if (e.type == DioExceptionType.connectionTimeout) {
         errorMsg = 'No se pudo conectar. Verifica tu internet y reintenta.';

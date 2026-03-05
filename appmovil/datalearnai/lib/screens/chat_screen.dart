@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animate_do/animate_do.dart';
 import '../providers/chat_provider.dart';
+import '../services/meili_service.dart';
 import '../widgets/typing_indicator.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/search_suggestions.dart';
 
 class ChatScreen extends StatelessWidget {
   const ChatScreen({super.key});
@@ -24,9 +27,13 @@ class _ChatView extends StatefulWidget {
 class _ChatViewState extends State<_ChatView> {
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
+  final MeiliService _meiliService = MeiliService();
+  List<String> _suggestions = [];
+  Timer? _debounceTimer;
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -122,6 +129,15 @@ class _ChatViewState extends State<_ChatView> {
                     },
                   ),
           ),
+          SearchSuggestions(
+            suggestions: _suggestions,
+            onTap: (sugerencia) {
+              setState(() {
+                _textController.text = sugerencia;
+                _suggestions = [];
+              });
+            },
+          ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             color: Theme.of(context).cardColor,
@@ -163,6 +179,7 @@ class _ChatViewState extends State<_ChatView> {
                           vertical: 10,
                         ),
                       ),
+                      onChanged: (texto) => _onTextChanged(texto),
                       onSubmitted: (_) => _sendMessage(chatProvider),
                     ),
                   ),
@@ -183,6 +200,12 @@ class _ChatViewState extends State<_ChatView> {
   void _sendMessage(ChatProvider provider) {
     if (_textController.text.trim().isEmpty) return;
 
+    // Limpiar sugerencias al enviar
+    setState(() {
+      _suggestions = [];
+    });
+    _debounceTimer?.cancel();
+
     // Quitar foco del TextField para cerrar teclado
     FocusScope.of(context).unfocus();
 
@@ -199,6 +222,26 @@ class _ChatViewState extends State<_ChatView> {
         );
       }
     });
+  }
+
+  void _onTextChanged(String texto) {
+    if (texto.length < 3) {
+      setState(() => _suggestions = []);
+      _debounceTimer?.cancel();
+      return;
+    }
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(
+      const Duration(milliseconds: 300),
+      () => _fetchSuggestions(texto),
+    );
+  }
+
+  Future<void> _fetchSuggestions(String texto) async {
+    final results = await _meiliService.buscarSugerencias(texto);
+    if (mounted) {
+      setState(() => _suggestions = results);
+    }
   }
 }
 
@@ -281,45 +324,57 @@ class _MessageBubble extends StatelessWidget {
   }
 
   Widget _buildTable(dynamic data) {
-    if (data is! List || data.isEmpty) return const SizedBox.shrink();
-    final List<Map<String, dynamic>> rows = List<Map<String, dynamic>>.from(
-      data,
-    );
-    final headers = rows.first.keys.toList();
+    try {
+      if (data is! List || data.isEmpty) return const SizedBox.shrink();
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        headingRowHeight: 40,
-        dataRowMinHeight: 30,
-        columns: headers
-            .map(
-              (h) => DataColumn(
-                label: Text(
-                  h,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            )
-            .toList(),
-        rows: rows.map((row) {
-          return DataRow(
-            cells: headers
-                .map(
-                  (h) => DataCell(
-                    Text(
-                      row[h].toString(),
-                      style: const TextStyle(fontSize: 12),
+      // Filtrar solo filas que sean Map (ignora strings u otros tipos)
+      final rows = data
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+
+      if (rows.isEmpty) return const SizedBox.shrink();
+
+      final headers = rows.first.keys.toList();
+      if (headers.isEmpty) return const SizedBox.shrink();
+
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowHeight: 40,
+          dataRowMinHeight: 30,
+          columns: headers
+              .map(
+                (h) => DataColumn(
+                  label: Text(
+                    h.toString(),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
                     ),
                   ),
-                )
-                .toList(),
-          );
-        }).toList(),
-      ),
-    );
+                ),
+              )
+              .toList(),
+          rows: rows.map((row) {
+            return DataRow(
+              cells: headers
+                  .map(
+                    (h) => DataCell(
+                      Text(
+                        (row[h] ?? '').toString(),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            );
+          }).toList(),
+        ),
+      );
+    } catch (e) {
+      // Si hay cualquier error al renderizar la tabla, no crashear la app
+      return const SizedBox.shrink();
+    }
   }
 }
